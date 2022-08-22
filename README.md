@@ -24,19 +24,11 @@ Here's a more detailed breakdown of performance on an A100. Credit to [@technobi
 
 The flax model and code for converting it to torch can be found [here](https://github.com/kuprel/min-dalle-flax).
 
-This codebase specifically is for lower memory graphics card to help run locally. <br/>
-There are a few changes to the [original](https://github.com/kuprel/min-dalle):
-In this fork
-- Uses the GPU Cuda cores for the Encoder and Tokenizer
-- Uses the CPU and RAM for the decoder as the RAM has more memory (16GB in my case)
-- Uses the GPU for the VQGAN Detoker
-Throught this, one realises a slower build time ~55s but it can be done locally using a lower memory GPU
-
 ## Install
-
+Clone the repo to run
 ```bash
-$ pip install min-dalle
-```  
+git clone https://github.com/hitansh1299/min-dalle-for-low-VRAM.git
+```
 
 ## Usage
 
