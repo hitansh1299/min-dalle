@@ -47,58 +47,34 @@ from min_dalle import MinDalle
 
 model = MinDalle(
     models_root='./pretrained',
-    dtype=torch.float32,
     device='cuda',
-    is_mega=True, 
-    is_reusable=True
+    is_mega=True,
+    is_reusable=False
 )
+
 ```
 
 The required models will be downloaded to `models_root` if they are not already there.  Set the `dtype` to `torch.float16` to save GPU memory.  If you have an Ampere architecture GPU you can use `torch.bfloat16`.  Set the `device` to either "cuda" or "cpu".  Once everything has finished initializing, call `generate_image` with some text as many times as you want.  Use a positive `seed` for reproducible results.  Higher values for `supercondition_factor` result in better agreement with the text but a narrower variety of generated images.  Every image token is sampled from the `top_k` most probable tokens.  The largest logit is subtracted from the logits to avoid infs.  The logits are then divided by the `temperature`.  If `is_seamless` is true, the image grid will be tiled in token space not pixel space.
 
 ```python
-image = model.generate_image(
-    text='Nuclear explosion broccoli',
-    seed=-1,
-    grid_size=4,
+img = model.generate_image(
+    text='cat on a bicycle',
+    seed=24,
+    grid_size=1,
     is_seamless=False,
     temperature=1,
     top_k=256,
     supercondition_factor=32,
-    is_verbose=False
+    is_verbose=True
 )
 
-display(image)
 ```
 <img src="https://github.com/kuprel/min-dalle/raw/main/examples/nuclear_broccoli.jpg" alt="min-dalle" width="400"/>
 
-Credit to [@hardmaru](https://twitter.com/hardmaru) for the [example](https://twitter.com/hardmaru/status/1544354119527596034)
 
-
-### Saving Individual Images
-The images can also be generated as a `FloatTensor` in case you want to process them manually.
-
-```python
-images = model.generate_images(
-    text='Nuclear explosion broccoli',
-    seed=-1,
-    grid_size=3,
-    is_seamless=False,
-    temperature=1,
-    top_k=256,
-    supercondition_factor=16,
-    is_verbose=False
-)
-```
-
-To get an image into PIL format you will have to first move the images to the CPU and convert the tensor to a numpy array.
-```python
-images = images.to('cpu').numpy()
-```
 Then image $i$ can be coverted to a PIL.Image and saved
 ```python
-image = Image.fromarray(images[i])
-image.save('image_{}.png'.format(i))
+img = img.save('my_new_image.png') 
 ```
 
 ### Progressive Outputs
