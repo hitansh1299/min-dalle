@@ -10,35 +10,39 @@ from typing import Iterator
 from .text_tokenizer import TextTokenizer
 from .models import DalleBartEncoder, DalleBartDecoder, VQGanDetokenizer
 
+
 torch.set_grad_enabled(False)
 torch.set_num_threads(os.cpu_count())
 torch.backends.cudnn.enabled = True
+torch.backends.cudnn.benchmark = True
 torch.backends.cudnn.allow_tf32 = True
 
 MIN_DALLE_REPO = 'https://huggingface.co/kuprel/min-dalle/resolve/main/'
 IMAGE_TOKEN_COUNT = 256
 
-
+torch.cuda.set_enabled_lms(True)
 class MinDalle:
     def __init__(
         self,
         models_root: str = 'pretrained',
-        dtype: torch.dtype = torch.float32,
         device: str = None,
         is_mega: bool = True, 
         is_reusable: bool = True,
         is_verbose = True
     ):
+    
+        os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:32'
         if device == None:
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
         if is_verbose: print("using device", device)
         self.device = device
         self.is_mega = is_mega
         self.is_reusable = is_reusable
-        self.dtype = dtype
+        self.dtype = torch.float16
         self.is_verbose = is_verbose
         self.text_token_count = 64
-        self.layer_count = 24 if is_mega else 12
+        # self.layer_count = 24 if is_mega else 12 
+        self.layer_count = 24
         self.attention_head_count = 32 if is_mega else 16
         self.embed_count = 2048 if is_mega else 1024
         self.glu_embed_count = 4096 if is_mega else 2730
@@ -77,7 +81,10 @@ class MinDalle:
         if self.is_verbose: print("downloading encoder params")
         suffix = '' if self.is_mega else '_mini'
         params = requests.get(MIN_DALLE_REPO + 'encoder{}.pt'.format(suffix))
-        with open(self.encoder_params_path, 'wb') as f: f.write(params.content)
+        print(params.status_code)
+        with open(self.encoder_params_path, 'wb') as f: 
+            f.write(params.content)
+            print(f)
 
 
     def download_decoder(self):
@@ -94,7 +101,7 @@ class MinDalle:
 
 
     def init_tokenizer(self):
-        _ = requests.get(MIN_DALLE_REPO + 'config.json') # trigger HF download
+        _ = requests.get(MIN_DALLE_REPO + 'config.json')
         is_downloaded = os.path.exists(self.vocab_path)
         is_downloaded &= os.path.exists(self.merges_path)
         if not is_downloaded: self.download_tokenizer()
@@ -121,11 +128,12 @@ class MinDalle:
         ).to(self.dtype).eval()
         params = torch.load(self.encoder_params_path)
         self.encoder.load_state_dict(params, strict=False)
+        self.encoder = self.encoder.half()
         del params
         self.encoder = self.encoder.to(device=self.device)
 
 
-    def init_decoder(self):
+    def init_decoder(self, device='cuda'):
         is_downloaded = os.path.exists(self.decoder_params_path)
         if not is_downloaded: self.download_decoder()
         if self.is_verbose: print("initializing DalleBartDecoder")
@@ -135,12 +143,13 @@ class MinDalle:
             embed_count = self.embed_count,
             glu_embed_count = self.glu_embed_count,
             layer_count = self.layer_count,
-            device=self.device
-        ).to(self.dtype).eval()
-        params = torch.load(self.decoder_params_path)
+            device=self.device,
+        ).to(dtype=self.dtype).eval()
+        params = torch.load(self.decoder_params_path, map_location=torch.device('cpu'))
         self.decoder.load_state_dict(params, strict=False)
         del params
         self.decoder = self.decoder.to(device=self.device)
+        # self.decoder = self.decoder.to(device='cpu')
 
 
     def init_detokenizer(self):
@@ -152,6 +161,7 @@ class MinDalle:
         self.detokenizer.load_state_dict(params)
         del params
         self.detokenizer = self.detokenizer.to(device=self.device)
+        # self.detokenizer = self.detokenizer.to(device='cpu')
 
 
     def image_grid_from_tokens(
@@ -162,6 +172,7 @@ class MinDalle:
     ) -> FloatTensor:
         if not self.is_reusable: del self.decoder
         torch.cuda.empty_cache()
+        image_tokens = image_tokens.cuda()
         if not self.is_reusable: self.init_detokenizer()
         if is_verbose: print("detokenizing image")
         images = self.detokenizer.forward(is_seamless, image_tokens)
@@ -187,7 +198,7 @@ class MinDalle:
         if len(tokens) > self.text_token_count: 
             tokens = tokens[:self.text_token_count]
         if is_verbose: print("{} text tokens".format(len(tokens)), tokens)
-        text_tokens = numpy.ones((2, 64), dtype=numpy.int32)
+        text_tokens = numpy.ones((2, 64), dtype=numpy.int16)
         text_tokens[0, :2] = [tokens[0], tokens[-1]]
         text_tokens[1, :len(tokens)] = tokens
         text_tokens = torch.tensor(
@@ -200,9 +211,17 @@ class MinDalle:
         if is_verbose: print("encoding text tokens")
         with torch.cuda.amp.autocast(dtype=self.dtype):
             encoder_state = self.encoder.forward(text_tokens)
+        
+        
+        encoder_state.to(device='cpu')
+        text_tokens.to(device='cpu')
+        # encoder_state.to(dtype=torch.float32)
+        self.device = 'cpu'
+        self.dtype = torch.float32
+
+
         if not self.is_reusable: del self.encoder
         torch.cuda.empty_cache()
-
         if not self.is_reusable: self.init_decoder()
 
         with torch.cuda.amp.autocast(dtype=self.dtype):
@@ -219,6 +238,7 @@ class MinDalle:
                 ), 
                 device=self.device
             )
+
             image_tokens = torch.full(
                 (image_count, IMAGE_TOKEN_COUNT + 1), 
                 2 ** 14 - 1,
@@ -236,18 +256,24 @@ class MinDalle:
         )
         for i in range(IMAGE_TOKEN_COUNT):
             torch.cuda.empty_cache()                
-            with torch.cuda.amp.autocast(dtype=self.dtype):
-                image_tokens[:, i + 1], attention_state = self.decoder.sample_tokens(
-                    settings=settings,
-                    attention_mask=attention_mask,
-                    encoder_state=encoder_state,
-                    attention_state=attention_state,
-                    # prev_tokens=image_tokens[:, :i+1],
-                    # token_index=token_indices[:i+1]
-                    prev_tokens=image_tokens[:, [i]],
-                    token_index=token_indices[[i]]
-                )
+            # with torch.cuda.amp.autocast(dtype=self.dtype):
+            # with torch.autocast('cpu', dtype=torch.bfloat16):
+            image_tokens[:, i + 1], attention_state = self.decoder.sample_tokens(
+                settings=settings,
+                attention_mask=attention_mask.to(device='cpu'),
+                encoder_state=encoder_state.to(dtype=torch.float32, device='cpu'),
+                attention_state=attention_state.to(dtype=torch.float32, device='cpu'),
+                # prev_tokens=image_tokens[:, :i+1],
+                # token_index=token_indices[:i+1]
+                prev_tokens=image_tokens[:, [i]],
+                token_index=token_indices[[i]]
+            )
 
+
+            self.device = 'cuda'
+            self.dtype = torch.float32
+            # print(f'Device set to {self.device} and dtype set to {self.dtype}')
+            
             with torch.cuda.amp.autocast(dtype=torch.float32):
                 if ((i + 1) % 32 == 0 and progressive_outputs) or i + 1 == 256:
                     yield self.image_grid_from_tokens(
