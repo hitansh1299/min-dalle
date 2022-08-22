@@ -12,18 +12,6 @@
 
 This is a fast, minimal port of Boris Dayma's [DALL·E Mini](https://github.com/borisdayma/dalle-mini) (with mega weights).  It has been stripped down for inference and converted to PyTorch.  The only third party dependencies are numpy, requests, pillow and torch.
 
-To generate a 3x3 grid of DALL·E Mega images it takes:
-- 55 sec with a T4 in Colab
-- 33 sec with a P100 in Colab
-- 15 sec with an A10G on Hugging Face
-
-Here's a more detailed breakdown of performance on an A100. Credit to [@technobird22](https://github.com/technobird22) and his [NeoGen](https://github.com/technobird22/NeoGen) discord bot for the graph.
-<br />
-<img src="https://github.com/kuprel/min-dalle/raw/main/performance.png" alt="min-dalle" width="450"/>
-<br />
-
-The flax model and code for converting it to torch can be found [here](https://github.com/kuprel/min-dalle-flax).
-
 This codebase specifically is for lower memory graphics card to help run locally. <br/>
 There are a few changes to the [original](https://github.com/kuprel/min-dalle):
 In this fork
