@@ -24,8 +24,8 @@ Here's a more detailed breakdown of performance on an A100. Credit to [@technobi
 
 The flax model and code for converting it to torch can be found [here](https://github.com/kuprel/min-dalle-flax).
 
-This codebase specifically is for lower memory graphics card to help run locally.
-There are a few changes to the original:
+This codebase specifically is for lower memory graphics card to help run locally. <br/>
+There are a few changes to the [original](https://github.com/kuprel/min-dalle):
 In this fork
 - Uses the GPU Cuda cores for the Encoder and Tokenizer
 - Uses the CPU and RAM for the decoder as the RAM has more memory (16GB in my case)
