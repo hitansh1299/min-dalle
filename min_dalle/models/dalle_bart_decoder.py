@@ -13,6 +13,7 @@ class DecoderCrossAttention(AttentionBase):
         encoder_state: FloatTensor,
         attention_mask: BoolTensor
     ) -> FloatTensor:
+        # print(f'Decoder state: {decoder_state.device}\nencoder_state:{encoder_state.device}\nattention mask: {attention_mask.device}')
         keys = self.k_proj.forward(encoder_state)
         values = self.v_proj.forward(encoder_state)
         queries = self.q_proj.forward(decoder_state)
@@ -154,6 +155,7 @@ class DalleBartDecoder(nn.Module):
         prev_tokens: LongTensor,
         token_index: LongTensor
     ) -> Tuple[FloatTensor, FloatTensor]:
+        # print(attention_mask.dtype, encoder_state.dtype, attention_state.dtype)
         image_count = encoder_state.shape[0] // 2
         token_index = token_index.unsqueeze(0).repeat(image_count * 2, 1)
         prev_tokens = prev_tokens.repeat(2, 1)
