@@ -57,7 +57,7 @@ img = model.generate_image(
 )
 
 ```
-<img src="https://github.com/kuprel/min-dalle/raw/main/examples/nuclear_broccoli.jpg" alt="min-dalle" width="400"/>
+<img src="examples/my_new_image.png" alt="min-dalle" width="400"/>
 
 
 Then image $i$ can be coverted to a PIL.Image and saved
